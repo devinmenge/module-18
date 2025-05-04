@@ -10,30 +10,28 @@ import {
 } from 'react-bootstrap';
 
 import Auth from '../utils/auth';
-import { searchGoogleBooks } from '../utils/API'; // Removed saveBook
+import { searchGoogleBooks } from '../utils/API';
 import { saveBookIds, getSavedBookIds } from '../utils/localStorage';
 import { useMutation } from '@apollo/client';
 import { SAVE_BOOK } from '../utils/mutations';
+import { GET_ME } from '../utils/queries'; // Import GET_ME for refetch
 import type { Book } from '../models/Book';
 import type { GoogleAPIBook } from '../models/GoogleAPIBook';
 
 const SearchBooks = () => {
-  // create state for holding returned google api data
   const [searchedBooks, setSearchedBooks] = useState<Book[]>([]);
-  // create state for holding our search field data
   const [searchInput, setSearchInput] = useState('');
-  // create state to hold saved bookId values
   const [savedBookIds, setSavedBookIds] = useState(getSavedBookIds());
 
-  // set up useEffect hook to save `savedBookIds` list to localStorage on component unmount
   useEffect(() => {
     return () => saveBookIds(savedBookIds);
   });
 
-  // Use the SAVE_BOOK mutation
-  const [saveBookMutation] = useMutation(SAVE_BOOK);
+  // Use the SAVE_BOOK mutation with refetchQueries
+  const [saveBookMutation, { error }] = useMutation(SAVE_BOOK, {
+    refetchQueries: [{ query: GET_ME }], // Refetch GET_ME after mutation
+  });
 
-  // create method to search for books and set state on form submit
   const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -56,7 +54,7 @@ const SearchBooks = () => {
         title: book.volumeInfo.title,
         description: book.volumeInfo.description,
         image: book.volumeInfo.imageLinks?.thumbnail || '',
-        link: book.volumeInfo.infoLink || '', // Added link for BookInput
+        link: book.volumeInfo.infoLink || '',
       }));
 
       setSearchedBooks(bookData);
@@ -66,27 +64,23 @@ const SearchBooks = () => {
     }
   };
 
-  // create function to handle saving a book to our database
   const handleSaveBook = async (bookId: string) => {
-    // find the book in `searchedBooks` state by the matching id
     const bookToSave: Book = searchedBooks.find((book) => book.bookId === bookId)!;
-
-    // get token (for authentication check)
     const token = Auth.loggedIn() ? Auth.getToken() : null;
 
     if (!token) {
+      console.log('No token found, user not logged in');
       return false;
     }
 
     try {
-      await saveBookMutation({
+      const { data } = await saveBookMutation({
         variables: { bookData: bookToSave },
       });
-
-      // if book successfully saves to user's account, save book id to state
+      console.log('Book saved successfully:', data);
       setSavedBookIds([...savedBookIds, bookToSave.bookId]);
     } catch (err) {
-      console.error(err);
+      console.error('Error saving book:', err);
     }
   };
 
@@ -151,6 +145,7 @@ const SearchBooks = () => {
             );
           })}
         </Row>
+        {error && <div className="text-danger mt-3">Error saving book: {error.message}</div>}
       </Container>
     </>
   );
